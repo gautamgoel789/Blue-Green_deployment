@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: static-site
-        image: static-site:blue      # ✅ your locally built image
+        image:ghcr.io/gautamgoel789/static-site:green # ✅ your locally built image
         ports:
         - containerPort: 80
   strategy:
