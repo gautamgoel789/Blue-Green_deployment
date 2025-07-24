@@ -1,0 +1,104 @@
+name: Blue-Green Deployment with Trivy & Falco
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/static-site
+  IMAGE_TAG: green
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build Docker Image
+      run: |
+        docker build -t $IMAGE_NAME:$IMAGE_TAG .
+
+    - name: Trivy Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        format: table
+        severity: CRITICAL,HIGH
+        exit-code: 1
+
+    - name: Push Docker Image
+      run: docker push $IMAGE_NAME:$IMAGE_TAG
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'latest'
+
+    - name: Set up Kubeconfig for Minikube
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
+
+    - name: Update rollout.yaml with new image tag
+      run: |
+        sed -i "s|image:.*|image: $IMAGE_NAME:$IMAGE_TAG|" rollout.yaml
+
+    - name: Apply rollout and services
+      run: |
+        kubectl apply -f services.yaml
+        kubectl apply -f rollout.yaml
+
+    - name: Wait 10 minutes for Falco runtime monitoring
+      run: |
+        echo "Sleeping 600 seconds to observe runtime behavior..."
+        sleep 600
+
+    - name: Check Falco Alerts
+      id: falco-check
+      run: |
+        alerts=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
+        if [[ -n "$alerts" ]]; then
+          echo "::set-output name=found::true"
+        else
+          echo "::set-output name=found::false"
+        fi
+
+    - name: Promote or Rollback
+      run: |
+        if [[ "${{ steps.falco-check.outputs.found }}" == "true" ]]; then
+          echo "⚠️ Falco detected runtime threats. Rolling back..."
+          kubectl argo rollouts undo static-site
+        else
+          echo "✅ No issues detected. Promoting green deployment..."
+          kubectl argo rollouts promote static-site
+        fi
+
+    - name: Notify on Microsoft Teams (Optional)
+      if: always()
+      run: |
+        curl -H 'Content-Type: application/json' -d '{
+          "@type": "MessageCard",
+          "@context": "https://schema.org/extensions",
+          "summary": "Blue-Green Deployment",
+          "themeColor": "0076D7",
+          "sections": [{
+            "activityTitle": "Deployment Pipeline Status",
+            "facts": [
+              { "name": "Result", "value": "${{ job.status }}" },
+              { "name": "Image", "value": "$IMAGE_NAME:$IMAGE_TAG" }
+            ],
+            "markdown": true
+          }]
+        }' ${{ secrets.MS_TEAMS_WEBHOOK }}
