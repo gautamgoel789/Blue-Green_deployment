@@ -1,0 +1,24 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: static-site-active
+spec:
+  selector:
+    app: static-site
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: static-site-preview
+spec:
+  selector:
+    app: static-site
+  ports:
+    - port: 80
+      targetPort: 80
+
+
