@@ -1,4 +1,4 @@
-name: Deploy Static Site to Azure AKS (Blue-Green)
+name: Blue-Green Secure Deployment to AKS
 
 on:
   push:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
+    - name: Checkout code
       uses: actions/checkout@v3
 
     - name: Log in to Docker Hub
@@ -26,6 +26,14 @@ jobs:
     - name: Build Docker Image
       run: docker build -t $DOCKER_REPO:$IMAGE_TAG .
 
+    - name: Trivy Scan - Image Vulnerability Check
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
+        format: table
+        severity: CRITICAL,HIGH
+        exit-code: 1
+
     - name: Push Docker Image
       run: docker push $DOCKER_REPO:$IMAGE_TAG
 
@@ -36,7 +44,6 @@ jobs:
 
     - name: ✅ Verify Kubernetes Context
       run: |
-        echo "🔍 Checking Kubernetes context..."
         kubectl config current-context
         kubectl cluster-info
         kubectl get nodes
@@ -49,11 +56,37 @@ jobs:
       run: |
         kubectl apply -f services.yaml
         kubectl apply -f rollout.yaml
+
     - name: Install Argo Rollouts CLI
       run: |
         curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
         chmod +x kubectl-argo-rollouts-linux-amd64
         sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
 
-    - name: Promote deployment using Argo Rollouts
-      run: kubectl argo rollouts promote static-site
+    - name: ⏳ Wait for Falco to monitor runtime (10 mins)
+      run: |
+        echo "Monitoring runtime behavior with Falco..."
+        sleep 600
+
+    - name: Check Falco Alerts
+      id: falco-check
+      run: |
+        ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
+        if [[ -n "$ALERTS" ]]; then
+          echo "Falco alerts found:"
+          echo "$ALERTS"
+          echo "::set-output name=found::true"
+        else
+          echo "No Falco alerts found."
+          echo "::set-output name=found::false"
+        fi
+
+    - name: Promote or Rollback Based on Falco
+      run: |
+        if [[ "${{ steps.falco-check.outputs.found }}" == "true" ]]; then
+          echo "⚠️ Rolling back due to Falco alerts..."
+          kubectl-argo-rollouts undo static-site
+        else
+          echo "✅ Promoting green deployment..."
+          kubectl-argo-rollouts promote static-site
+        fi
