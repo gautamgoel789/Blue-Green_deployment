@@ -10,14 +10,16 @@ env:
   DOCKER_REPO: ${{ secrets.DOCKER_USERNAME }}/static-site
 
 jobs:
-  deploy:
+
+  build-and-push:
+    name: 👷 Build & Push Image
     runs-on: ubuntu-latest
 
     steps:
-    - name: 📥 Checkout code
+    - name: 📅 Checkout code
       uses: actions/checkout@v3
 
-    - name: 🔐 Log in to Docker Hub
+    - name: 🔐 Docker Login
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
@@ -26,7 +28,23 @@ jobs:
     - name: 🛠️ Build Docker Image
       run: docker build -t $DOCKER_REPO:$IMAGE_TAG .
 
-    - name: 🛡️ Trivy Scan - Image Vulnerability Check
+    - name: 📊 Get Image Digest
+      id: digest
+      run: |
+        DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $DOCKER_REPO:$IMAGE_TAG)
+        echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+    - name: 📤 Push Image to Docker Hub
+      run: docker push $DOCKER_REPO:$IMAGE_TAG
+
+
+  scan-image:
+    name: 🛡️ Trivy Image Scan
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 🛡️ Run Trivy Scan
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: ${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
@@ -34,14 +52,15 @@ jobs:
         severity: CRITICAL,HIGH
         exit-code: 1
 
-    - name: 📤 Push Docker Image
-      run: docker push $DOCKER_REPO:$IMAGE_TAG
 
-    - name: 🔍 Get Image Digest
-      id: digest
-      run: |
-        DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $DOCKER_REPO:$IMAGE_TAG)
-        echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+  deploy:
+    name: 🚀 Deploy to AKS
+    needs: [build-and-push, scan-image]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 👜 Checkout code
+      uses: actions/checkout@v3
 
     - name: ⚙️ Set up kubeconfig for AKS
       run: |
@@ -56,7 +75,7 @@ jobs:
 
     - name: 🔁 Replace image in rollout.yaml using digest
       run: |
-        sed -i "s|image:.*|image: ${{ steps.digest.outputs.digest }}|" rollout.yaml
+        sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
 
     - name: 🚀 Apply rollout and services
       run: |
@@ -69,39 +88,51 @@ jobs:
         chmod +x kubectl-argo-rollouts-linux-amd64
         sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
 
-    - name: ⏳ Wait for Falco to monitor runtime
+
+  falco-monitor:
+    name: 🔍 Monitor with Falco
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: ⏳ Wait for Falco Runtime Check
       run: |
         echo "Monitoring runtime behavior with Falco..."
         sleep 6
 
-    - name: 🔎 Check Falco Alerts
+    - name: 👁️ Check Falco Logs
       id: falco-check
       run: |
         ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
         if [[ -n "$ALERTS" ]]; then
           echo "Falco alerts found:"
           echo "$ALERTS"
-          echo "::set-output name=found::true"
+          echo "found=true" >> $GITHUB_OUTPUT
         else
           echo "No Falco alerts found."
-          echo "::set-output name=found::false"
-        fi
+          echo "found=false" >> $GITHUB_OUTPUT
 
-    - name: 🔄 Promote or Rollback Based on Falco
+    - name: 🔄 Promote or Rollback Deployment
       run: |
         if [[ "${{ steps.falco-check.outputs.found }}" == "true" ]]; then
           echo "⚠️ Rolling back due to Falco alerts..."
           kubectl-argo-rollouts undo static-site
         else
-          echo "✅ Promoting green deployment..."
+          echo "✅ Promoting deployment..."
           kubectl-argo-rollouts promote static-site
-        fi
 
-    - name: 📣 Notify Microsoft Teams via Logic App
-      if: always()
+
+  notify:
+    name: 📢 Notify Microsoft Teams
+    needs: falco-monitor
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📢 Send Notification
       run: |
         curl -H 'Content-Type: application/json' -d '{
-          "status": "${{ job.status }}",
+          "status": "${{ needs.falco-monitor.result }}",
           "app": "static-site",
           "environment": "Azure AKS"
         }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4'
