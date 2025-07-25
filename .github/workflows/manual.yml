@@ -14,19 +14,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
+    - name: 📥 Checkout code
       uses: actions/checkout@v3
 
-    - name: Log in to Docker Hub
+    - name: 🔐 Log in to Docker Hub
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build Docker Image
+    - name: 🛠️ Build Docker Image
       run: docker build -t $DOCKER_REPO:$IMAGE_TAG .
 
-    - name: Trivy Scan - Image Vulnerability Check
+    - name: 🛡️ Trivy Scan - Image Vulnerability Check
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: ${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
@@ -34,10 +34,10 @@ jobs:
         severity: CRITICAL,HIGH
         exit-code: 1
 
-    - name: Push Docker Image
+    - name: 📤 Push Docker Image
       run: docker push $DOCKER_REPO:$IMAGE_TAG
 
-    - name: Set up kubeconfig for AKS
+    - name: ⚙️ Set up kubeconfig for AKS
       run: |
         mkdir -p ~/.kube
         echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
@@ -48,16 +48,16 @@ jobs:
         kubectl cluster-info
         kubectl get nodes
 
-    - name: Replace image in rollout.yaml
+    - name: 🔁 Replace image in rollout.yaml
       run: |
         sed -i "s|image:.*|image: $DOCKER_REPO:$IMAGE_TAG|" rollout.yaml
 
-    - name: Apply rollout and services
+    - name: 🚀 Apply rollout and services
       run: |
         kubectl apply -f services.yaml
         kubectl apply -f rollout.yaml
 
-    - name: Install Argo Rollouts CLI
+    - name: 📦 Install Argo Rollouts CLI
       run: |
         curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
         chmod +x kubectl-argo-rollouts-linux-amd64
@@ -66,9 +66,9 @@ jobs:
     - name: ⏳ Wait for Falco to monitor runtime (10 mins)
       run: |
         echo "Monitoring runtime behavior with Falco..."
-        sleep 60
+        sleep 600
 
-    - name: Check Falco Alerts
+    - name: 🔎 Check Falco Alerts
       id: falco-check
       run: |
         ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
@@ -81,7 +81,7 @@ jobs:
           echo "::set-output name=found::false"
         fi
 
-    - name: Promote or Rollback Based on Falco
+    - name: 🔄 Promote or Rollback Based on Falco
       run: |
         if [[ "${{ steps.falco-check.outputs.found }}" == "true" ]]; then
           echo "⚠️ Rolling back due to Falco alerts..."
@@ -90,3 +90,22 @@ jobs:
           echo "✅ Promoting green deployment..."
           kubectl-argo-rollouts promote static-site
         fi
+
+    - name: 📣 Notify Microsoft Teams
+      if: always()
+      run: |
+        curl -H 'Content-Type: application/json' -d '{
+          "@type": "MessageCard",
+          "@context": "https://schema.org/extensions",
+          "summary": "AKS Blue-Green Deployment",
+          "themeColor": "0076D7",
+          "title": "🚀 Deployment Status: ${{ job.status }}",
+          "sections": [{
+            "facts": [
+              { "name": "App", "value": "${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}" },
+              { "name": "Environment", "value": "Azure AKS" },
+              { "name": "Status", "value": "${{ job.status }}" }
+            ],
+            "markdown": true
+          }]
+        }' ${{ secrets.MS_TEAMS_WEBHOOK }}
