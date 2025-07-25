@@ -66,7 +66,7 @@ jobs:
     - name: ⏳ Wait for Falco to monitor runtime (10 mins)
       run: |
         echo "Monitoring runtime behavior with Falco..."
-        sleep 6
+        sleep 600
 
     - name: 🔎 Check Falco Alerts
       id: falco-check
@@ -91,21 +91,11 @@ jobs:
           kubectl-argo-rollouts promote static-site
         fi
 
-    - name: 📣 Notify Microsoft Teams
+    - name: 📣 Notify Microsoft Teams via Logic App
       if: always()
       run: |
         curl -H 'Content-Type: application/json' -d '{
-          "@type": "MessageCard",
-          "@context": "https://schema.org/extensions",
-          "summary": "AKS Blue-Green Deployment",
-          "themeColor": "0076D7",
-          "title": "🚀 Deployment Status: ${{ job.status }}",
-          "sections": [{
-            "facts": [
-              { "name": "App", "value": "${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}" },
-              { "name": "Environment", "value": "Azure AKS" },
-              { "name": "Status", "value": "${{ job.status }}" }
-            ],
-            "markdown": true
-          }]
-        }' ${{ secrets.MS_TEAMS_WEBHOOK }}
+          "status": "${{ job.status }}",
+          "app": "static-site",
+          "environment": "Azure AKS"
+        }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4'
