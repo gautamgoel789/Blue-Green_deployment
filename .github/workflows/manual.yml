@@ -28,11 +28,13 @@ jobs:
     - name: 🛠️ Build Docker Image
       run: docker build -t $DOCKER_REPO:$IMAGE_TAG .
 
-    - name: 📊 Get Image Digest
-      id: digest
-      run: |
-        DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $DOCKER_REPO:$IMAGE_TAG)
-        echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+    - name: 🔍 Get Image Digest
+  id: digest
+  run: |
+    docker pull $DOCKER_REPO:$IMAGE_TAG
+    DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $DOCKER_REPO:$IMAGE_TAG)
+    echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
 
     - name: 📤 Push Image to Docker Hub
       run: docker push $DOCKER_REPO:$IMAGE_TAG
