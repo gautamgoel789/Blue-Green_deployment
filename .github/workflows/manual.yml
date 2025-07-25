@@ -37,6 +37,12 @@ jobs:
     - name: 📤 Push Docker Image
       run: docker push $DOCKER_REPO:$IMAGE_TAG
 
+    - name: 🔍 Get Image Digest
+      id: digest
+      run: |
+        DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $DOCKER_REPO:$IMAGE_TAG)
+        echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
     - name: ⚙️ Set up kubeconfig for AKS
       run: |
         mkdir -p ~/.kube
@@ -48,9 +54,9 @@ jobs:
         kubectl cluster-info
         kubectl get nodes
 
-    - name: 🔁 Replace image in rollout.yaml
+    - name: 🔁 Replace image in rollout.yaml using digest
       run: |
-        sed -i "s|image:.*|image: $DOCKER_REPO:$IMAGE_TAG|" rollout.yaml
+        sed -i "s|image:.*|image: ${{ steps.digest.outputs.digest }}|" rollout.yaml
 
     - name: 🚀 Apply rollout and services
       run: |
@@ -63,10 +69,10 @@ jobs:
         chmod +x kubectl-argo-rollouts-linux-amd64
         sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
 
-    - name: ⏳ Wait for Falco to monitor runtime (10 mins)
+    - name: ⏳ Wait for Falco to monitor runtime
       run: |
         echo "Monitoring runtime behavior with Falco..."
-        sleep 6
+        sleep 60
 
     - name: 🔎 Check Falco Alerts
       id: falco-check
