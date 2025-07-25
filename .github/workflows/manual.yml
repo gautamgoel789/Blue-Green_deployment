@@ -29,12 +29,19 @@ jobs:
     - name: Push Docker Image
       run: docker push $DOCKER_REPO:$IMAGE_TAG
 
-    - name: Set up kubeconfig
+    - name: Set up kubeconfig for AKS
       run: |
         mkdir -p ~/.kube
         echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-    - name: Update rollout image
+    - name: ✅ Verify Kubernetes Context
+      run: |
+        echo "🔍 Checking Kubernetes context..."
+        kubectl config current-context
+        kubectl cluster-info
+        kubectl get nodes
+
+    - name: Replace image in rollout.yaml
       run: |
         sed -i "s|image:.*|image: $DOCKER_REPO:$IMAGE_TAG|" rollout.yaml
 
@@ -43,5 +50,5 @@ jobs:
         kubectl apply -f services.yaml
         kubectl apply -f rollout.yaml
 
-    - name: Promote deployment
+    - name: Promote deployment using Argo Rollouts
       run: kubectl argo rollouts promote static-site
