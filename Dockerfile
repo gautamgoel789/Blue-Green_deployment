@@ -1,4 +1,8 @@
+# Use nginx base image
 FROM nginx:alpine
-RUN exit 1  # Force the build to fail or container to crash
 
+# Remove default nginx index page
+RUN rm -rf /usr/share/nginx/html/*
 
+# Copy your HTML file to nginx web directory
+COPY index.html /usr/share/nginx/html/index.html
