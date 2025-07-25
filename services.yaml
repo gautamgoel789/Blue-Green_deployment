@@ -4,6 +4,7 @@ kind: Service
 metadata:
   name: static-site-active
 spec:
+  type: LoadBalancer   # <-- Add this line
   selector:
     app: static-site
   ports:
