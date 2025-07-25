@@ -1,70 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My Static Website</title>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Green Deployment</title>
   <style>
-    /* Reset and font setup */
     body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Montserrat', sans-serif;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: #fff;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .container {
-      width: 90%;
-      max-width: 600px;
-      padding: 20px;
-    }
-
-    .card {
-      background-color: rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 30px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-      backdrop-filter: blur(10px);
+      background-color: #e8f5e9;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       text-align: center;
-      transition: transform 0.3s ease;
+      padding: 50px;
     }
-
-    .card:hover {
-      transform: translateY(-5px);
-    }
-
     h1 {
-      font-size: 2rem;
-      color: #ffffff;
-      margin-bottom: 15px;
+      color: #2e7d32;
+      font-size: 48px;
     }
-
     p {
-      font-size: 1rem;
-      color: #e0e0e0;
-      line-height: 1.6;
+      font-size: 20px;
+      color: #388e3c;
     }
-
-    .highlight {
-      color: #ffeb3b;
+    .tag {
+      background-color: #c8e6c9;
+      display: inline-block;
+      padding: 10px 20px;
+      border-radius: 20px;
       font-weight: bold;
+      color: #1b5e20;
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="card">
-      <h1>🚀 Welcome to the Static Site!</h1>
-      <p>This static HTML/CSS website is deployed using <strong>Blue-Green deployment</strong> on Kubernetes!</p>
-      <p>Enjoy <span class="highlight">zero-downtime</span> and <span class="highlight">secure rollouts</span>.</p>
-    </div>
-  </div>
+  <h1>🚀 Welcome to the Green Deployment!</h1>
+  <p>This is the updated version of our static site running in the green environment.</p>
+  <div class="tag">Environment: GREEN</div>
 </body>
 </html>
-
