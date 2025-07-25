@@ -11,10 +11,10 @@ spec:
     metadata:
       labels:
         app: static-site
-    spec:
+    spec:                            # ✅ Moved this under metadata
       containers:
       - name: static-site
-        image: gautamgoel789/static-site:green     # ✅ your locally built image
+        image: gautamgoel789/static-site:green
         ports:
         - containerPort: 80
   strategy:
@@ -22,4 +22,3 @@ spec:
       activeService: static-site-active
       previewService: static-site-preview
       autoPromotionEnabled: false
-
