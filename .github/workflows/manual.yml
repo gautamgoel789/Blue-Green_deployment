@@ -101,18 +101,20 @@ jobs:
       run: |
         echo "Monitoring runtime behavior with Falco..."
         sleep 6
+        
+    - name: 🔎 Check Falco Alerts
+    id: falco-check
+    run: |
+      ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
+      if [[ -n "$ALERTS" ]]; then
+        echo "Falco alerts found:"
+        echo "$ALERTS"
+        echo "found=true" >> $GITHUB_OUTPUT
+      else
+        echo "No Falco alerts found."
+        echo "found=false" >> $GITHUB_OUTPUT
+      fi
 
-    - name: 👁️ Check Falco Logs
-      id: falco-check
-      run: |
-        ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
-        if [[ -n "$ALERTS" ]]; then
-          echo "Falco alerts found:"
-          echo "$ALERTS"
-          echo "found=true" >> $GITHUB_OUTPUT
-        else
-          echo "No Falco alerts found."
-          echo "found=false" >> $GITHUB_OUTPUT
 
     - name: 🔄 Promote or Rollback Deployment
       run: |
