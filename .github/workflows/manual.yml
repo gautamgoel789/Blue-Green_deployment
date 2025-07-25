@@ -97,6 +97,11 @@ jobs:
       found: ${{ steps.falco-check.outputs.found }}
 
     steps:
+      - name: ⚙️ Set up kubeconfig for AKS
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
+
       - name: ⏳ Wait for Falco Runtime Check
         run: |
           echo "Monitoring runtime behavior with Falco..."
