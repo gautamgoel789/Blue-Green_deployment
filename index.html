@@ -1,37 +1,23 @@
 <!DOCTYPE html>
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Green Deployment</title>
-  <style>
-    body {
-      background-color: #e8f5e9;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      text-align: center;
-      padding: 50px;
-    }
-    h1 {
-      color: #2e7d32;
-      font-size: 48px;
-    }
-    p {
-      font-size: 20px;
-      color: #388e3c;
-    }
-    .tag {
-      background-color: #c8e6c9;
-      display: inline-block;
-      padding: 10px 20px;
-      border-radius: 20px;
-      font-weight: bold;
-      color: #1b5e20;
-      margin-top: 20px;
-    }
-  </style>
+  <title>Broken Page</title>
 </head>
 <body>
-  <h1>🚀 Welcome to the Green Deployment!</h1>
-  <p>This is the updated version of our static site running in the green environment.</p>
-  <div class="tag">Environment: GREEN</div>
-</body>
+  <h1>Welcome to the Blue Deployment</h1>
+  <p>This page has a runtime error below:</p>
 
+  <!-- JavaScript Error to trigger runtime issues -->
+  <script>
+    // ReferenceError: nonExistentFunction is not defined
+    nonExistentFunction();
+  </script>
+
+  <!-- Broken Image -->
+  <img src="invalid-image.png" alt="Broken Image" />
+
+  <!-- Malformed HTML -->
+  <div>
+    <p>Unclosed tag
+</body>
+</html>
