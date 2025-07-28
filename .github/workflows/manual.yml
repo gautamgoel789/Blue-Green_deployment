@@ -1,4 +1,3 @@
-
 name: Blue-Green Secure Deployment to AKS
 
 on:
@@ -151,4 +150,3 @@ jobs:
             "app": "static-site",
             "environment": "Azure AKS"
           }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4'
-
