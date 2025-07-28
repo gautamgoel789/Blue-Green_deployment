@@ -74,7 +74,7 @@ jobs:
           kubectl cluster-info
           kubectl get nodes
 
-      - name: 🧼 Clean line endings (optional but safe)
+      - name: 🧼 Clean line endings
         run: |
           sudo apt-get install dos2unix -y
           dos2unix rollout.yaml
@@ -83,7 +83,7 @@ jobs:
         run: |
           sed -i "s|PLACEHOLDER|${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
 
-      - name: 🐛 Debug rollout.yaml after image replacement
+      - name: 🐛 Debug rollout.yaml
         run: cat rollout.yaml
 
       - name: 🚀 Apply services and rollout
