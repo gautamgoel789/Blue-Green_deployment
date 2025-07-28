@@ -32,7 +32,7 @@ jobs:
       - name: 📤 Push Image to Docker Hub
         run: docker push $DOCKER_REPO:$IMAGE_TAG
 
-      - name: 🔍 Get Image Digest
+      - name: 📥 Pull and Get Digest
         id: digest
         run: |
           docker pull $DOCKER_REPO:$IMAGE_TAG
@@ -44,7 +44,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: 🛡️ Run Trivy Scan
+      - name: Run Trivy Scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
@@ -65,16 +65,9 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: ✅ Verify Kubernetes Context
-        run: |
-          kubectl config current-context
-          kubectl cluster-info
-          kubectl get nodes
-
       - name: 🔁 Replace image in rollout.yaml using digest
         run: |
-         sed -i "s|image: PLACEHOLDER|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
-
+          sed -i "s|image: PLACEHOLDER|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
 
       - name: 🚀 Apply rollout and services
         run: |
@@ -145,4 +138,4 @@ jobs:
             "status": "${{ needs.falco-monitor.result }}",
             "app": "static-site",
             "environment": "Azure AKS"
-          }' 'https://prod-22.centralindia.logic.azure.com/...REDACTED...' # Replace with your Logic App URL
+          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4' # Your Logic App URL here
