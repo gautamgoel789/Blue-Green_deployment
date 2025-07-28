@@ -84,23 +84,23 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: 🕒 Wait Before Traffic Switch
+      - name: 📦 Install Argo Rollouts CLI
         run: |
-          echo "⏳ Waiting for observation before promotion..."
-          sleep 60  # simulate user validation or monitoring
+          curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          chmod +x kubectl-argo-rollouts-linux-amd64
+          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
 
-      - name: 🌀 Set Traffic Weight 50/50
-        run: |
-          kubectl-argo-rollouts set-weight static-site 50
+      - name: ⏳ Wait Before Switching
+        run: sleep 60
 
-      - name: 🕒 Wait After Partial Shift
-        run: |
-          echo "🔍 Observing after partial rollout..."
-          sleep 30
+      - name: ⚖️ Set Traffic to 50/50
+        run: kubectl-argo-rollouts set-weight static-site 50
 
-      - name: 🌀 Set Traffic Weight 100% to Green
-        run: |
-          kubectl-argo-rollouts promote static-site
+      - name: ⏳ Wait After 50%
+        run: sleep 30
+
+      - name: ✅ Promote Traffic to Green (100%)
+        run: kubectl-argo-rollouts promote static-site
 
   monitor-and-rollback:
     runs-on: ubuntu-latest
@@ -111,25 +111,29 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
+      - name: 📦 Install Argo Rollouts CLI
+        run: |
+          curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          chmod +x kubectl-argo-rollouts-linux-amd64
+          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+
       - name: 🔍 Monitor Falco Alerts
         id: falco
         run: |
           sleep 10
           ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
+          echo "found=false" >> $GITHUB_OUTPUT
           if [[ -n "$ALERTS" ]]; then
             echo "found=true" >> $GITHUB_OUTPUT
             echo "⚠️ Falco alerts detected:"
             echo "$ALERTS"
           else
-            echo "found=false" >> $GITHUB_OUTPUT
             echo "✅ No Falco alerts."
           fi
 
-      - name: 🔄 Auto Rollback if Needed
+      - name: 🔄 Rollback on Alerts
         if: steps.falco.outputs.found == 'true'
-        run: |
-          echo "Rolling back to previous stable version..."
-          kubectl-argo-rollouts undo static-site
+        run: kubectl-argo-rollouts undo static-site
 
   notify:
     runs-on: ubuntu-latest
@@ -142,4 +146,4 @@ jobs:
             "status": "${{ job.status }}",
             "app": "static-site",
             "environment": "Azure AKS"
-          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/....'  # your logic app URL
+          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/....'  # <-- your logic app URL
