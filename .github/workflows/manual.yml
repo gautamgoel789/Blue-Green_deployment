@@ -1,4 +1,4 @@
-name: Blue-Green Deployment to AKS with Traffic Switching
+name: Blue-Green Deployment to AKS with Promotion
 
 on:
   push:
@@ -60,7 +60,7 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: 🔁 Inject image digest in rollout.yaml
+      - name: 🔁 Inject image digest
         run: |
           sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
 
@@ -84,22 +84,12 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: 📦 Install Argo Rollouts CLI
+      - name: 🕒 Wait Before Promotion
         run: |
-          curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
-          chmod +x kubectl-argo-rollouts-linux-amd64
-          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          echo "⏳ Waiting for observation (manual or automated)..."
+          sleep 60
 
-      - name: ⏳ Wait Before Switching
-        run: sleep 60
-
-      - name: ⚖️ Set Traffic to 50/50
-        run: kubectl-argo-rollouts set-weight static-site 50
-
-      - name: ⏳ Wait After 50%
-        run: sleep 30
-
-      - name: ✅ Promote Traffic to Green (100%)
+      - name: ✅ Promote Green to Active
         run: kubectl-argo-rollouts promote static-site
 
   monitor-and-rollback:
@@ -111,27 +101,21 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: 📦 Install Argo Rollouts CLI
-        run: |
-          curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
-          chmod +x kubectl-argo-rollouts-linux-amd64
-          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
-
       - name: 🔍 Monitor Falco Alerts
         id: falco
         run: |
           sleep 10
           ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
-          echo "found=false" >> $GITHUB_OUTPUT
           if [[ -n "$ALERTS" ]]; then
             echo "found=true" >> $GITHUB_OUTPUT
             echo "⚠️ Falco alerts detected:"
             echo "$ALERTS"
           else
+            echo "found=false" >> $GITHUB_OUTPUT
             echo "✅ No Falco alerts."
           fi
 
-      - name: 🔄 Rollback on Alerts
+      - name: 🔄 Rollback If Falco Alerts Found
         if: steps.falco.outputs.found == 'true'
         run: kubectl-argo-rollouts undo static-site
 
@@ -140,10 +124,10 @@ jobs:
     needs: monitor-and-rollback
     if: always()
     steps:
-      - name: 📢 Notify Teams via Logic App
+      - name: 📢 Notify via MS Teams
         run: |
           curl -H 'Content-Type: application/json' -d '{
             "status": "${{ job.status }}",
             "app": "static-site",
             "environment": "Azure AKS"
-          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/....'  # <-- your logic app URL
+          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4'
