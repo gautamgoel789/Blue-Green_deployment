@@ -1,3 +1,4 @@
+
 name: Blue-Green Secure Deployment to AKS
 
 on:
@@ -49,7 +50,7 @@ jobs:
       - name: 🛡️ Run Trivy Scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ needs.build-and-push.outputs.digest }}
+          image-ref: ${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
           format: table
           severity: CRITICAL,HIGH
           exit-code: 1
@@ -74,19 +75,11 @@ jobs:
           kubectl cluster-info
           kubectl get nodes
 
-      - name: 🧼 Clean line endings
+      - name: 🔁 Replace image in rollout.yaml using digest
         run: |
-          sudo apt-get install dos2unix -y
-          dos2unix rollout.yaml
+          sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
 
-      - name: 🔁 Replace image placeholder in rollout.yaml with digest
-        run: |
-          sed -i "s|PLACEHOLDER|${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
-
-      - name: 🐛 Debug rollout.yaml
-        run: cat rollout.yaml
-
-      - name: 🚀 Apply services and rollout
+      - name: 🚀 Apply rollout and services
         run: |
           kubectl apply -f services.yaml
           kubectl apply -f rollout.yaml
