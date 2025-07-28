@@ -73,7 +73,7 @@ jobs:
           kubectl get nodes
       - name: 🔁 Replace image in rollout.yaml using digest
         run: |
-          sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
+          sed -i "s|PLACEHOLDER|${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
       - name: 🚀 Apply rollout and services
         run: |
           kubectl apply -f services.yaml
