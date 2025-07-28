@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: static-site
-          image: gautamgoel789/static-site@sha256:PLACEHOLDER
+          image: PLACEHOLDER
           ports:
             - containerPort: 80
   strategy:
