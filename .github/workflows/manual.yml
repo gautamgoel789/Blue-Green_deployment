@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.digest.outputs.digest }}
+
     steps:
       - name: 📅 Checkout code
         uses: actions/checkout@v3
@@ -32,19 +33,19 @@ jobs:
       - name: 📤 Push Image to Docker Hub
         run: docker push $DOCKER_REPO:$IMAGE_TAG
 
-      - name: 📥 Pull and Get Digest
+      - name: 🔍 Get Image Digest
         id: digest
         run: |
           docker pull $DOCKER_REPO:$IMAGE_TAG
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $DOCKER_REPO:$IMAGE_TAG)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
-
   scan-image:
     name: 🛡️ Trivy Image Scan
     needs: build-and-push
     runs-on: ubuntu-latest
+
     steps:
-      - name: Run Trivy Scan
+      - name: 🛡️ Run Trivy Scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
@@ -56,6 +57,7 @@ jobs:
     name: 🚀 Deploy to AKS
     needs: [build-and-push, scan-image]
     runs-on: ubuntu-latest
+
     steps:
       - name: 👜 Checkout code
         uses: actions/checkout@v3
@@ -64,58 +66,56 @@ jobs:
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
-
+      - name: ✅ Verify Kubernetes Context
+        run: |
+          kubectl config current-context
+          kubectl cluster-info
+          kubectl get nodes
       - name: 🔁 Replace image in rollout.yaml using digest
         run: |
-          sed -i "s|image: PLACEHOLDER|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
-
+          sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
       - name: 🚀 Apply rollout and services
         run: |
           kubectl apply -f services.yaml
           kubectl apply -f rollout.yaml
-
       - name: 📦 Install Argo Rollouts CLI
         run: |
           curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
           chmod +x kubectl-argo-rollouts-linux-amd64
           sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
-
   falco-monitor:
-    name: 🔍 Monitor with Falco & Promote/Undo
+    name: 🔍 Monitor with Falco
     needs: deploy
     runs-on: ubuntu-latest
     outputs:
       found: ${{ steps.falco-check.outputs.found }}
+
     steps:
       - name: ⚙️ Set up kubeconfig for AKS
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
-
+      - name: ⏳ Wait for Falco Runtime Check
+        run: |
+          echo "Monitoring runtime behavior with Falco..."
+          sleep 6
       - name: 📦 Install Argo Rollouts CLI
         run: |
           curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
           chmod +x kubectl-argo-rollouts-linux-amd64
           sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
-
-      - name: ⏳ Wait for Falco Runtime Check
-        run: |
-          echo "Monitoring runtime behavior with Falco..."
-          sleep 10
-
       - name: 🔎 Check Falco Alerts
         id: falco-check
         run: |
           ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
           if [[ -n "$ALERTS" ]]; then
-            echo "found=true" >> $GITHUB_OUTPUT
-            echo "⚠️ Falco alerts found:"
+            echo "Falco alerts found:"
             echo "$ALERTS"
+            echo "found=true" >> $GITHUB_OUTPUT
           else
+            echo "No Falco alerts found."
             echo "found=false" >> $GITHUB_OUTPUT
-            echo "✅ No Falco alerts found."
           fi
-
       - name: 🔄 Promote or Rollback Deployment
         run: |
           if [[ "${{ steps.falco-check.outputs.found }}" == "true" ]]; then
@@ -125,12 +125,12 @@ jobs:
             echo "✅ Promoting deployment..."
             kubectl-argo-rollouts promote static-site
           fi
-
   notify:
     name: 📢 Notify Microsoft Teams
     needs: falco-monitor
     if: always()
     runs-on: ubuntu-latest
+
     steps:
       - name: 📢 Send Notification
         run: |
@@ -138,4 +138,4 @@ jobs:
             "status": "${{ needs.falco-monitor.result }}",
             "app": "static-site",
             "environment": "Azure AKS"
-          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4' # Your Logic App URL here
+          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4'
