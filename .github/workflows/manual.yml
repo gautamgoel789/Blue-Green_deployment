@@ -27,8 +27,8 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: 🛠️ Build Docker Image
-        run: docker build -t $DOCKER_REPO:$IMAGE_TAG .
+      - name: 🛠️ Build Docker Image (no cache)
+        run: docker build --no-cache -t $DOCKER_REPO:$IMAGE_TAG .
 
       - name: 📤 Push Image to Docker Hub
         run: docker push $DOCKER_REPO:$IMAGE_TAG
@@ -39,6 +39,7 @@ jobs:
           docker pull $DOCKER_REPO:$IMAGE_TAG
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $DOCKER_REPO:$IMAGE_TAG)
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "📦 Image digest used: $DIGEST"
 
   scan-image:
     name: 🛡️ Trivy Image Scan
@@ -68,15 +69,11 @@ jobs:
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: ✅ Verify Kubernetes Context
-        run: |
-          kubectl config current-context
-          kubectl cluster-info
-          kubectl get nodes
-
       - name: 🔁 Replace image in rollout.yaml using digest
         run: |
           sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
+          echo "✅ rollout.yaml after replacement:"
+          cat rollout.yaml
 
       - name: 🚀 Apply rollout and services
         run: |
@@ -105,34 +102,28 @@ jobs:
       - name: ⏳ Wait for Falco Runtime Check
         run: |
           echo "Monitoring runtime behavior with Falco..."
-          sleep 6
-
-      - name: 📦 Install Argo Rollouts CLI
-        run: |
-          curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
-          chmod +x kubectl-argo-rollouts-linux-amd64
-          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          sleep 10
 
       - name: 🔎 Check Falco Alerts
         id: falco-check
         run: |
           ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
           if [[ -n "$ALERTS" ]]; then
-            echo "Falco alerts found:"
+            echo "⚠️ Falco alerts found:"
             echo "$ALERTS"
             echo "found=true" >> $GITHUB_OUTPUT
           else
-            echo "No Falco alerts found."
+            echo "✅ No Falco alerts found."
             echo "found=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 🔄 Promote or Rollback Deployment
         run: |
           if [[ "${{ steps.falco-check.outputs.found }}" == "true" ]]; then
-            echo "⚠️ Rolling back due to Falco alerts..."
+            echo "Rolling back to previous (blue)..."
             kubectl-argo-rollouts undo static-site
           else
-            echo "✅ Promoting deployment..."
+            echo "Promoting green to active..."
             kubectl-argo-rollouts promote static-site
           fi
 
@@ -149,4 +140,4 @@ jobs:
             "status": "${{ needs.falco-monitor.result }}",
             "app": "static-site",
             "environment": "Azure AKS"
-          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4'
+          }' 'https://prod-22.centralindia.logic.azure.com/...REDACTED...'  # your logic app URL
