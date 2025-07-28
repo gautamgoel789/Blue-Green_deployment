@@ -1,4 +1,4 @@
-name: Blue-Green Secure Deployment to AKS
+name: Blue-Green Deployment to AKS with Traffic Switching
 
 on:
   push:
@@ -12,14 +12,11 @@ env:
 jobs:
 
   build-and-push:
-    name: 👷 Build & Push Image
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.digest.outputs.digest }}
-
     steps:
-      - name: 📅 Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: 🔐 Docker Login
         uses: docker/login-action@v3
@@ -27,13 +24,13 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: 🛠️ Build Docker Image
+      - name: 🛠️ Build Image
         run: docker build -t $DOCKER_REPO:$IMAGE_TAG .
 
-      - name: 📤 Push Image to Docker Hub
+      - name: 📤 Push Image
         run: docker push $DOCKER_REPO:$IMAGE_TAG
 
-      - name: 🔍 Get Image Digest
+      - name: 🔍 Get Digest
         id: digest
         run: |
           docker pull $DOCKER_REPO:$IMAGE_TAG
@@ -41,12 +38,10 @@ jobs:
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
   scan-image:
-    name: 🛡️ Trivy Image Scan
-    needs: build-and-push
     runs-on: ubuntu-latest
-
+    needs: build-and-push
     steps:
-      - name: 🛡️ Run Trivy Scan
+      - name: 🛡️ Trivy Scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.DOCKER_REPO }}:${{ env.IMAGE_TAG }}
@@ -55,30 +50,21 @@ jobs:
           exit-code: 1
 
   deploy:
-    name: 🚀 Deploy to AKS
-    needs: [build-and-push, scan-image]
     runs-on: ubuntu-latest
-
+    needs: [build-and-push, scan-image]
     steps:
-      - name: 👜 Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: ⚙️ Set up kubeconfig for AKS
+      - name: ⚙️ Setup kubeconfig
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: ✅ Verify Kubernetes Context
-        run: |
-          kubectl config current-context
-          kubectl cluster-info
-          kubectl get nodes
-
-      - name: 🔁 Replace image in rollout.yaml using digest
+      - name: 🔁 Inject image digest in rollout.yaml
         run: |
           sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
 
-      - name: 🚀 Apply rollout and services
+      - name: 🚀 Deploy rollout & service
         run: |
           kubectl apply -f services.yaml
           kubectl apply -f rollout.yaml
@@ -89,64 +75,71 @@ jobs:
           chmod +x kubectl-argo-rollouts-linux-amd64
           sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
 
-  falco-monitor:
-    name: 🔍 Monitor with Falco
-    needs: deploy
+  promote-traffic:
     runs-on: ubuntu-latest
-    outputs:
-      found: ${{ steps.falco-check.outputs.found }}
-
+    needs: deploy
     steps:
-      - name: ⚙️ Set up kubeconfig for AKS
+      - name: ⚙️ Setup kubeconfig
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
 
-      - name: ⏳ Wait for Falco Runtime Check
+      - name: 🕒 Wait Before Traffic Switch
         run: |
-          echo "Monitoring runtime behavior with Falco..."
-          sleep 6
+          echo "⏳ Waiting for observation before promotion..."
+          sleep 60  # simulate user validation or monitoring
 
-      - name: 📦 Install Argo Rollouts CLI
+      - name: 🌀 Set Traffic Weight 50/50
         run: |
-          curl -sLO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
-          chmod +x kubectl-argo-rollouts-linux-amd64
-          sudo mv kubectl-argo-rollouts-linux-amd64 /usr/local/bin/kubectl-argo-rollouts
+          kubectl-argo-rollouts set-weight static-site 50
 
-      - name: 🔎 Check Falco Alerts
-        id: falco-check
+      - name: 🕒 Wait After Partial Shift
         run: |
+          echo "🔍 Observing after partial rollout..."
+          sleep 30
+
+      - name: 🌀 Set Traffic Weight 100% to Green
+        run: |
+          kubectl-argo-rollouts promote static-site
+
+  monitor-and-rollback:
+    runs-on: ubuntu-latest
+    needs: promote-traffic
+    steps:
+      - name: ⚙️ Setup kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" | base64 -d > ~/.kube/config
+
+      - name: 🔍 Monitor Falco Alerts
+        id: falco
+        run: |
+          sleep 10
           ALERTS=$(kubectl logs -l app=falco -n falco --tail=500 | grep -i "Warning" || true)
           if [[ -n "$ALERTS" ]]; then
-            echo "Falco alerts found:"
-            echo "$ALERTS"
             echo "found=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Falco alerts detected:"
+            echo "$ALERTS"
           else
-            echo "No Falco alerts found."
             echo "found=false" >> $GITHUB_OUTPUT
+            echo "✅ No Falco alerts."
           fi
 
-      - name: 🔄 Promote or Rollback Deployment
+      - name: 🔄 Auto Rollback if Needed
+        if: steps.falco.outputs.found == 'true'
         run: |
-          if [[ "${{ steps.falco-check.outputs.found }}" == "true" ]]; then
-            echo "⚠️ Rolling back due to Falco alerts..."
-            kubectl-argo-rollouts undo static-site
-          else
-            echo "✅ Promoting deployment..."
-            kubectl-argo-rollouts promote static-site
-          fi
+          echo "Rolling back to previous stable version..."
+          kubectl-argo-rollouts undo static-site
 
   notify:
-    name: 📢 Notify Microsoft Teams
-    needs: falco-monitor
-    if: always()
     runs-on: ubuntu-latest
-
+    needs: monitor-and-rollback
+    if: always()
     steps:
-      - name: 📢 Send Notification
+      - name: 📢 Notify Teams via Logic App
         run: |
           curl -H 'Content-Type: application/json' -d '{
-            "status": "${{ needs.falco-monitor.result }}",
+            "status": "${{ job.status }}",
             "app": "static-site",
             "environment": "Azure AKS"
-          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/0d188668908c473595232ca44013a6b3/triggers/When_a_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_a_HTTP_request_is_received%2Frun&sv=1.0&sig=FK_gknItep5YhqxhpDlt0Jt8rgRuxbxc3fo1hNVsVm4'
+          }' 'https://prod-22.centralindia.logic.azure.com:443/workflows/....'  # your logic app URL
