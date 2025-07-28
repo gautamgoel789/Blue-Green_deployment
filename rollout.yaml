@@ -13,10 +13,10 @@ spec:
         app: static-site
     spec:
       containers:
-      - name: static-site
-        image: PLACEHOLDER   # <-- This must exist exactly like this
-        ports:
-        - containerPort: 80
+        - name: static-site
+          image: PLACEHOLDER
+          ports:
+            - containerPort: 80
   strategy:
     blueGreen:
       activeService: static-site-active
