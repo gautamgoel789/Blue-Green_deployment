@@ -2,7 +2,7 @@ name: Blue-Green Secure Deployment to AKS
 
 on:
   push:
-    branches: [ main ]
+    branches: [ experiment ]
 
 env:
   IMAGE_NAME: static-site
