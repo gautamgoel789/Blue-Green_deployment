@@ -77,7 +77,11 @@ jobs:
 
       - name: 🔁 Replace image in rollout.yaml using digest
         run: |
-          sed -i "s|image:.*|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
+          sed -i "s|image: PLACEHOLDER|image: ${{ needs.build-and-push.outputs.digest }}|" rollout.yaml
+
+      - name: 🔍 Confirm image replacement
+        run: grep "image:" rollout.yaml
+   
 
       - name: 🚀 Apply rollout and services
         run: |
