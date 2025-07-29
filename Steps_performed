@@ -1,0 +1,35 @@
+ 1. Code Push to GitHub
+    push changes (e.g., HTML/CSS updates) to the main branch.
+    This triggers the GitHub Actions pipeline.
+
+2. Docker Image Build
+   GitHub Actions builds a Docker image from your source code using the Dockerfile.
+   docker build -t gautamgoel789/static-site:green .
+
+3. Get Image Digest
+   docker inspect --format='{{index .RepoDigests 0}}' gautamgoel789/static-site:green
+
+4.Trivy Security Scan
+  The image is scanned using Trivy for CRITICAL and HIGH vulnerabilities.
+  If vulnerabilities are found, the pipeline fails.
+
+5. Set up AKS kubeconfig
+   GitHub Actions configures access to out AKS cluster using a base64-encoded kubeconfig stored in secrets.
+
+6.  Replace Image Digest in rollout.yaml
+    sed -i "s|image:.*|image: gautamgoel789/static-site@sha256:<digest>|" rollout.yaml
+
+7.Apply Argo Rollout and Services
+   kubectl apply -f services.yaml
+   kubectl apply -f rollout.yaml
+
+8. Monitor Runtime with Falco for 10 min after deployment
+   Falco watches for suspicious activity inside pods.
+
+9.Conditional Promotion or Rollback
+  kubectl-argo-rollouts promote static-site
+  kubectl-argo-rollouts undo static-site
+
+10. Send Notification to Microsoft Teams
+     using teams workflow and azure logic app we add secretes in github actions.
+ 
