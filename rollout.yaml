@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: static-site
-        image: gautamgoel789/static-site@sha256:PLACEHOLDER   # <-- This will be replaced in CI/CD
+        image: PLACEHOLDER   # <-- This will be replaced in CI/CD
         ports:
         - containerPort: 80
   strategy:
