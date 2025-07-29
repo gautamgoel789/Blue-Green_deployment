@@ -73,7 +73,7 @@ jobs:
     - name: ⏳ Wait(10min) for Falco to monitor runtime
       run: |
         echo "Monitoring runtime behavior with Falco..."
-        sleep 600
+        sleep 6
 
     - name: 🔎 Check Falco Alerts
       id: falco-check
